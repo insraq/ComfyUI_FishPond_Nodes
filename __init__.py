@@ -1,5 +1,5 @@
-from .unfake_node import *
 from .rmbg_tools import MOD_RMBG_NODE
+from .unfake_node import *
 
 ## Meneger Mapping
 NODE_CLASS_MAPPINGS = {
