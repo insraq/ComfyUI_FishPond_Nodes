@@ -1,3 +1,4 @@
+from .prompt_node import PromptCombinations, PromptGeneration
 from .rmbg_tools import MOD_RMBG_NODE
 from .unfake_node import *
 
@@ -11,6 +12,8 @@ NODE_CLASS_MAPPINGS = {
     "PixelUpscale2Target": PixelUpscale2Target,
     "RemoveBackgroundPixel": MOD_RMBG_NODE,
     "ImagesToRGB": Images_To_RGB,
+    "PromptCombinations": PromptCombinations,
+    "PromptGeneration": PromptGeneration,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -22,4 +25,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ImageUpscaleByInt": "Image Upscale By Integer",
     "RemoveBackgroundPixel": "Remove Background (FloodFill)",
     "ImagesToRGB": "Images Convert RGB",
+    "PromptCombinations": "Prompt Combinations",
+    "PromptGeneration": "Prompt Generation",
 }
