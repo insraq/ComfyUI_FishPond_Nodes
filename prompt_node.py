@@ -146,6 +146,10 @@ class PromptGeneration:
                     "STRING",
                     {"multiline": False, "default": ""},
                 ),
+                "reasoning_budget": (
+                    "INT",
+                    {"default": 4096, "min": 0, "max": 100000, "step": 1},
+                ),
             },
         }
 
@@ -162,7 +166,9 @@ class PromptGeneration:
             return url
         return url + "/chat/completions"
 
-    def generate(self, system_prompt, prompt, url, model="", api_key=""):
+    def generate(
+        self, system_prompt, prompt, url, model="", api_key="", reasoning_budget=0
+    ):
         endpoint = self._build_endpoint(url)
 
         payload = {
@@ -171,6 +177,7 @@ class PromptGeneration:
                 {"role": "user", "content": prompt},
             ],
             "stream": True,
+            "thinking_budget_tokens": reasoning_budget,
         }
         if model.strip():
             payload["model"] = model.strip()
@@ -192,12 +199,42 @@ class PromptGeneration:
         # the server does not expose a dedicated reasoning field.
         in_think_tag = False
 
+        # Print a labeled banner the first time each stream appears and whenever
+        # the active stream switches, so thinking and output stay distinct. Each
+        # stream gets its own color and body indentation for extra contrast.
+        last_stream = [None]
+        # ANSI styling: cyan for thinking, bold green for output. Banners use
+        # ASCII only so they never trip UnicodeEncodeError on legacy consoles.
+        styles = {
+            "thinking": {"color": "\033[36m", "title": "[ THINKING ]"},
+            "output": {"color": "\033[1;32m", "title": "[ OUTPUT ]"},
+        }
+        reset = "\033[0m"
+
+        def emit(kind, text):
+            if not text:
+                return
+            style = styles[kind]
+            color = style["color"]
+            if last_stream[0] != kind:
+                if last_stream[0] is not None:
+                    print(reset + "\n", flush=True)  # close prior stream + blank line
+                bar = "=" * 60
+                banner = ("\n{c}{bar}\n{c}{title}\n{c}{bar}{r}\n").format(
+                    c=color, bar=bar, title=style["title"], r=reset
+                )
+                print(banner, end="", flush=True)
+                last_stream[0] = kind
+            # Re-apply the stream color for the body so it stays visually tied
+            # to its banner even across many chunks.
+            print(color + text + reset, end="", flush=True)
+
         with urllib.request.urlopen(req) as resp:
             for raw_line in resp:
                 line = raw_line.decode("utf-8", errors="replace").strip()
                 if not line or not line.startswith("data:"):
                     continue
-                data = line[len("data:"):].strip()
+                data = line[len("data:") :].strip()
                 if data == "[DONE]":
                     break
                 try:
@@ -214,7 +251,7 @@ class PromptGeneration:
                 reasoning = delta.get("reasoning_content") or delta.get("reasoning")
                 if reasoning:
                     thinking_parts.append(reasoning)
-                    print(reasoning, end="", flush=True)
+                    emit("thinking", reasoning)
 
                 piece = delta.get("content")
                 if not piece:
@@ -226,23 +263,29 @@ class PromptGeneration:
                         end = piece.find("</think>")
                         if end == -1:
                             thinking_parts.append(piece)
-                            print(piece, end="", flush=True)
+                            emit("thinking", piece)
                             piece = ""
                         else:
                             reason = piece[:end]
                             thinking_parts.append(reason)
-                            print(reason, end="", flush=True)
-                            piece = piece[end + len("</think>"):]
+                            emit("thinking", reason)
+                            piece = piece[end + len("</think>") :]
                             in_think_tag = False
                     else:
                         start = piece.find("<think>")
                         if start == -1:
                             content_parts.append(piece)
+                            emit("output", piece)
                             piece = ""
                         else:
                             content_parts.append(piece[:start])
-                            piece = piece[start + len("<think>"):]
+                            emit("output", piece[:start])
+                            piece = piece[start + len("<think>") :]
                             in_think_tag = True
 
-        print()  # newline after streamed thinking
+        # Close the final stream with a separator so the block has a clear end.
+        if last_stream[0] is not None:
+            print(reset + "\n" + "=" * 60, flush=True)
+        else:
+            print()  # nothing streamed; just a trailing newline
         return ("".join(content_parts).strip(), "".join(thinking_parts).strip())
